@@ -82,6 +82,18 @@ export default function Home() {
     setTownship(''); setMinPrice(''); setMaxPrice('')
   }
 
+  const buildExportParams = () => {
+    const params = new URLSearchParams()
+    if (status) params.set('status', status)
+    if (minAcres) params.set('minAcres', minAcres)
+    if (maxAcres) params.set('maxAcres', maxAcres)
+    if (township) params.set('township', township)
+    if (minPrice) params.set('minPrice', minPrice)
+    if (maxPrice) params.set('maxPrice', maxPrice)
+    const s = params.toString()
+    return s ? `&${s}` : ''
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-6 py-4">
@@ -133,7 +145,7 @@ export default function Home() {
                 className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-blue-500 focus:outline-none" />
             </div>
           </div>
-          <div className="mt-3 flex items-center gap-3">
+          <div className="mt-3 flex items-center gap-3 flex-wrap">
             <button onClick={fetchLots}
               className="rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none">
               Apply Filters
@@ -147,6 +159,28 @@ export default function Home() {
                 {lots.length} lot{lots.length !== 1 ? 's' : ''} found
               </span>
             )}
+            <div className="ml-auto flex items-center gap-2">
+              <a
+                href={`/api/lots/export?format=csv${buildExportParams()}`}
+                download="lots-lancaster.csv"
+                className="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                CSV
+              </a>
+              <a
+                href={`/api/lots/export?format=kml${buildExportParams()}`}
+                download="lots-lancaster.kml"
+                className="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                </svg>
+                KML
+              </a>
+            </div>
           </div>
         </div>
 
