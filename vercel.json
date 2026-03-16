@@ -3,6 +3,7 @@
     { "path": "/api/scrape/gis", "schedule": "0 6 * * *" },
     { "path": "/api/scrape/zillow", "schedule": "0 7 * * *" },
     { "path": "/api/scrape/landwatch", "schedule": "0 8 * * *" },
-    { "path": "/api/scrape/deeds", "schedule": "0 9 * * *" }
+    { "path": "/api/scrape/deeds", "schedule": "0 9 * * *" },
+    { "path": "/api/alerts/check", "schedule": "0 10 * * *" }
   ]
 }
