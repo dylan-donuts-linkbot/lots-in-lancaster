@@ -220,13 +220,13 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
             <Field label="Source" value={l.source} />
             <Field label="Last Scraped" value={fmtDate(l.last_scraped_at)} />
           </dl>
-          {l.raw_data && (
+          {!!l.raw_data && (
             <details className="group">
               <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 select-none">
                 View raw data
               </summary>
               <pre className="mt-2 overflow-x-auto rounded bg-gray-50 p-3 text-xs text-gray-700 border border-gray-200">
-                {JSON.stringify(l.raw_data, null, 2)}
+                {JSON.stringify(l.raw_data as Record<string, unknown>, null, 2)}
               </pre>
             </details>
           )}
