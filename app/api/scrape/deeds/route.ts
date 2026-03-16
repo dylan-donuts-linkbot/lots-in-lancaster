@@ -85,7 +85,7 @@ function normalizeDeed(d: DeedRecord) {
     sold_date: recordingDate,
     source: 'deeds' as const,
     google_maps_url: buildGoogleMapsUrl(null, null, d.address ?? null),
-    last_scraped_at: new Date().toISOString(),
+    last_run_at: new Date().toISOString(),
     raw_data: d,
   }
 }
@@ -301,7 +301,7 @@ async function logScrape(
       records_added: recordsAdded,
       records_updated: recordsUpdated,
       errors: errors.length > 0 ? errors.join('; ') : null,
-      scraped_at: new Date().toISOString(),
+      run_at: new Date().toISOString(),
     })
   } catch {
     // non-fatal

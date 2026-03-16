@@ -133,7 +133,7 @@ function normalizeZillowListing(listing: ZillowListing) {
     mls_id: listing.mlsId ?? null,
     google_maps_url: buildGoogleMapsUrl(lat, lng, address),
     source: 'zillow' as const,
-    last_scraped_at: new Date().toISOString(),
+    last_run_at: new Date().toISOString(),
     raw_data: listing,
   }
 }
@@ -227,7 +227,7 @@ async function logScrape(
       records_added: recordsAdded,
       records_updated: recordsUpdated,
       errors: errors.length > 0 ? errors.join('; ') : null,
-      scraped_at: new Date().toISOString(),
+      run_at: new Date().toISOString(),
     })
   } catch {
     // non-fatal

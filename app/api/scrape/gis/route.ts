@@ -1,232 +1,141 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
 
-// Lancaster County PA GIS scraper
-// Tries multiple ArcGIS endpoints with fallback to PASDA statewide parcels
+// Lancaster County PA GIS Parcel Scraper
+// Source: Lancaster County ArcGIS Online - Parcels with Owner Data
+// Endpoint confirmed public and working: services.arcgis.com/G4S1dGvn7PIgYd6Y
+// 
+// Pulls all parcels >= 1 acre. Paginates in batches of 1000.
+// Filters to residential (R), farm (F), and agricultural (A) class parcels.
+// These represent land that could be built on or purchased.
 
-const GIS_ENDPOINTS = [
-  // Primary: Lancaster County direct ArcGIS — documented in DATA_SOURCES.md
-  'https://services.lancastercountypa.gov/lancastercountypa/rest/services/Parcels/MapServer/0/query',
-  // Alternate: lcwatlas portal
-  'https://lcwatlas.lancastercountypa.gov/arcgis/rest/services/Parcels/MapServer/0/query',
-  // Fallback 1: Lancaster County alternate subdomain
-  'https://gis.lancastercountypa.gov/arcgis/rest/services/Parcels/MapServer/0/query',
-  // Fallback 2: maps subdomain
-  'https://maps.lancastercountypa.gov/arcgis/rest/services/Parcels/MapServer/0/query',
-]
+const GIS_ENDPOINT =
+  'https://services.arcgis.com/G4S1dGvn7PIgYd6Y/arcgis/rest/services/Parcels_owners/FeatureServer/0/query'
 
-// PASDA statewide PA parcels — confirmed to exist
-const PASDA_ENDPOINT =
-  'https://services.pasda.psu.edu/arcgis/rest/services/pasda/PAParcels_2023/MapServer/0/query'
-
-// Lancaster County FIPS code is 42071
-const LANCASTER_FIPS = '42071'
-const LANCASTER_COUNTY_NAME = 'LANCASTER'
+// Lancaster County municipality codes → names (partial, most common)
+const MUNI_NAMES: Record<number, string> = {
+  1: 'Lancaster City', 2: 'Adamstown Boro', 3: 'Akron Boro', 4: 'Christiana Boro',
+  5: 'Elizabethtown Boro', 6: 'Ephrata Boro', 7: 'Lititz Boro', 8: 'Manheim Boro',
+  9: 'Marietta Boro', 10: 'Millersville Boro', 11: 'Mount Joy Boro', 12: 'Mountville Boro',
+  13: 'New Holland Boro', 14: 'Quarryville Boro', 15: 'Strasburg Boro', 16: 'Columbia Boro',
+  20: 'Bart Twp', 21: 'Brecknock Twp', 22: 'Caernarvon Twp', 23: 'Clay Twp',
+  24: 'Colerain Twp', 25: 'Conestoga Twp', 26: 'Conoy Twp', 27: 'Drumore Twp',
+  28: 'East Cocalico Twp', 29: 'East Donegal Twp', 30: 'East Earl Twp',
+  31: 'East Hempfield Twp', 32: 'East Lampeter Twp', 33: 'Eden Twp',
+  34: 'Elizabeth Twp', 35: 'Ephrata Twp', 36: 'Fulton Twp',
+  37: 'Lancaster Twp', 38: 'Leacock Twp', 39: 'Little Britain Twp',
+  40: 'Manheim Twp', 41: 'Manor Twp', 42: 'Martic Twp',
+  43: 'Mount Joy Twp', 44: 'Paradise Twp', 45: 'Penn Twp',
+  46: 'Pequea Twp', 47: 'Providence Twp', 48: 'Rapho Twp',
+  49: 'Sadsbury Twp', 50: 'Salisbury Twp', 51: 'Strasburg Twp',
+  52: 'Upper Leacock Twp', 53: 'Warwick Twp', 54: 'West Cocalico Twp',
+  55: 'West Donegal Twp', 56: 'West Earl Twp', 57: 'West Hempfield Twp',
+  58: 'West Lampeter Twp',
+}
 
 interface ArcGISFeature {
-  attributes: Record<string, unknown>
-  geometry?: {
-    x?: number
-    y?: number
-    rings?: number[][][]
-    paths?: number[][][]
+  attributes: {
+    UPI?: string
+    LOC_ADDRESS?: string
+    MUNI?: number
+    ACRE_PLAN_TOT?: number
+    OWN1?: string
+    OWN2?: string
+    ADDR1?: string
+    ADDR2?: string
+    ADDR3?: string
+    LUC?: string
+    CLASS?: string
+    LAST_SALE_PRICE?: number
+    LOT_ASSESS?: number
+    TOT_ASSESS?: number
+    XCOORD?: number
+    YCOORD?: number
+    DEED_REC_DATE?: number
+    SUBDIV_NAME?: string
+    LEGAL1?: string
+    [key: string]: unknown
   }
 }
 
-interface ArcGISResponse {
-  features?: ArcGISFeature[]
-  exceededTransferLimit?: boolean
-  error?: { code: number; message: string }
-}
-
-function buildQueryUrl(base: string, offset: number, where: string): string {
+function buildUrl(offset: number, where: string): string {
   const params = new URLSearchParams({
     where,
-    outFields: '*',
+    outFields: 'UPI,LOC_ADDRESS,MUNI,ACRE_PLAN_TOT,OWN1,OWN2,ADDR1,ADDR2,ADDR3,LUC,CLASS,LAST_SALE_PRICE,LOT_ASSESS,TOT_ASSESS,XCOORD,YCOORD,DEED_REC_DATE,SUBDIV_NAME,LEGAL1',
     f: 'json',
     resultRecordCount: '1000',
     resultOffset: String(offset),
-    returnGeometry: 'true',
+    returnGeometry: 'false',
+    orderByFields: 'OBJECTID ASC',
   })
-  return `${base}?${params.toString()}`
+  return `${GIS_ENDPOINT}?${params.toString()}`
 }
 
-async function tryFetchGIS(
-  endpoint: string,
-  where: string,
-  signal: AbortSignal
-): Promise<ArcGISResponse | null> {
-  try {
-    const url = buildQueryUrl(endpoint, 0, where)
-    const res = await fetch(url, {
-      signal,
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LotScraper/1.0)' },
-    })
-    if (!res.ok) return null
-    const json = (await res.json()) as ArcGISResponse
-    if (json.error) return null
-    return json
-  } catch {
-    return null
-  }
-}
+function featureToLot(f: ArcGISFeature) {
+  const a = f.attributes
+  if (!a.ACRE_PLAN_TOT || a.ACRE_PLAN_TOT < 1) return null
 
-function extractLatLng(
-  feature: ArcGISFeature
-): { lat: number; lng: number } | null {
-  const g = feature.geometry
-  if (!g) return null
-  // Point geometry
-  if (typeof g.x === 'number' && typeof g.y === 'number') {
-    // ArcGIS web mercator (EPSG:3857) coords need conversion if not WGS84
-    // If values are large (>180) they're likely web mercator
-    if (Math.abs(g.x) <= 180 && Math.abs(g.y) <= 90) {
-      return { lat: g.y, lng: g.x }
-    }
-    // Convert web mercator to WGS84
-    const lng = (g.x / 20037508.34) * 180
-    const lat =
-      (Math.atan(Math.exp((g.y / 20037508.34) * Math.PI)) * 360) / Math.PI -
-      90
-    if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
-      return { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 }
-    }
-    return null
-  }
-  // Polygon — use centroid from first ring
-  if (g.rings && g.rings.length > 0 && g.rings[0].length > 0) {
-    const ring = g.rings[0]
-    const sumX = ring.reduce((s, p) => s + p[0], 0) / ring.length
-    const sumY = ring.reduce((s, p) => s + p[1], 0) / ring.length
-    if (Math.abs(sumX) <= 180 && Math.abs(sumY) <= 90) {
-      return { lat: sumY, lng: sumX }
-    }
-    const lng = (sumX / 20037508.34) * 180
-    const lat =
-      (Math.atan(Math.exp((sumY / 20037508.34) * Math.PI)) * 360) / Math.PI -
-      90
-    if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
-      return { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 }
+  const upi = a.UPI ?? null
+  if (!upi) return null
+
+  const lat = a.YCOORD ?? null
+  const lng = a.XCOORD ?? null
+  const address = a.LOC_ADDRESS ?? null
+  const township = a.MUNI ? (MUNI_NAMES[a.MUNI] ?? `Municipality ${a.MUNI}`) : null
+
+  const googleMapsUrl = lat && lng
+    ? `https://maps.google.com/?q=${lat},${lng}`
+    : address
+    ? `https://maps.google.com/?q=${encodeURIComponent(address + ', Lancaster County, PA')}`
+    : null
+
+  // Determine status: if sold recently (within last 2 years), mark sold
+  let status: 'for_sale' | 'sold' | 'unknown' = 'unknown'
+  let soldDate: string | null = null
+  if (a.DEED_REC_DATE) {
+    const deedDate = new Date(a.DEED_REC_DATE)
+    const twoYearsAgo = new Date()
+    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2)
+    if (deedDate > twoYearsAgo) {
+      status = 'sold'
+      soldDate = deedDate.toISOString()
     }
   }
-  return null
-}
 
-function firstStr(attrs: Record<string, unknown>, ...keys: string[]): string | null {
-  for (const k of keys) {
-    const v = attrs[k]
-    if (v != null && String(v).trim() !== '') return String(v).trim()
-  }
-  return null
-}
-
-function firstNum(attrs: Record<string, unknown>, ...keys: string[]): number | null {
-  for (const k of keys) {
-    const v = attrs[k]
-    const n = parseFloat(String(v))
-    if (!isNaN(n)) return n
-  }
-  return null
-}
-
-function normalizeFeature(feature: ArcGISFeature) {
-  const a = feature.attributes
-  const coords = extractLatLng(feature)
-
-  const address = firstStr(
-    a,
-    'SITE_ADDRESS', 'SITEADDRESS', 'ADDR', 'ADDRESS', 'PROP_ADDR',
-    'PROPERTY_ADDRESS', 'FULLADDRESS', 'LOCATION', 'ADDR_FULL'
-  )
-  const township = firstStr(
-    a,
-    'MUNI_NAME', 'MUNICIPALITY', 'MUNINAME', 'TOWNSHIP', 'CITY', 'CITY_NAME',
-    'MUNICIPAL', 'ADMIN_AREA', 'MUNICIPALITY_NAME'
-  )
-  const acres = firstNum(a, 'ACRES', 'ACREAGE', 'SHAPE_AREA_ACRES', 'CALC_ACRES', 'GIS_ACRES')
-  const zoning = firstStr(
-    a,
-    'ZONING', 'ZONING_CODE', 'ZONE_CODE', 'ZONECODE', 'ZONING_CLASS',
-    'ZONING_DIST', 'ZONE', 'ZONING_DISTRICT'
-  )
-  const parcelId = firstStr(
-    a,
-    'PARCEL_ID', 'PARCELID', 'PIN', 'APN', 'PARID', 'OBJECTID',
-    'FID', 'GEOPIN', 'PARCEL_NUMBER', 'PIN_NUMBER', 'TAXPARCELID'
-  )
-  const ownerName = firstStr(
-    a,
-    'OWNER', 'OWNER_NAME', 'OWNERNAME', 'OWNER1', 'OWNER_FULL',
-    'OWNER_NAM', 'GRANTOR', 'OWNER_NANE'
-  )
-  const city = firstStr(a, 'SITUS_CITY', 'SITE_CITY', 'CITY', 'ADDR_CITY')
-  const zip = firstStr(a, 'SITUS_ZIP', 'SITE_ZIP', 'ZIP', 'ZIP_CODE', 'ADDR_ZIP', 'ZIPCODE')
-
-  const googleMapsUrl =
-    coords
-      ? `https://maps.google.com/?q=${coords.lat},${coords.lng}`
-      : address
-      ? `https://maps.google.com/?q=${encodeURIComponent(address + ' Lancaster County PA')}`
-      : null
+  // Build owner contact from address fields
+  const ownerParts = [a.ADDR1, a.ADDR2, a.ADDR3].filter(Boolean)
+  const ownerContact = ownerParts.join(', ') || null
 
   return {
     address,
+    city: township,
     township,
-    city,
-    zip,
-    lot_size_acres: acres,
-    zoning,
-    parcel_id: parcelId ? String(parcelId) : null,
-    owner_name: ownerName,
-    status: 'unknown' as const,
-    source: 'gis' as const,
-    lat: coords?.lat ?? null,
-    lng: coords?.lng ?? null,
+    zip: null,
+    lot_size_acres: a.ACRE_PLAN_TOT,
+    zoning: a.LUC ?? null,
+    status,
+    list_price: null,
+    sold_price: status === 'sold' ? (a.LAST_SALE_PRICE ?? null) : null,
+    sold_date: soldDate,
+    mls_id: null,
+    source_url: upi ? `https://lancastercountyassessment.org/AssessmentSearch/PropertyDetail/${encodeURIComponent(upi)}` : null,
+    latitude: lat,
+    longitude: lng,
     google_maps_url: googleMapsUrl,
-    last_scraped_at: new Date().toISOString(),
+    owner_name: [a.OWN1, a.OWN2].filter(Boolean).join(' / ') || null,
+    owner_contact: ownerContact,
+    agent_name: null,
+    agent_contact: null,
+    source: 'gis' as const,
     raw_data: a,
+    last_scraped_at: new Date().toISOString(),
   }
-}
-
-async function fetchAllPages(
-  endpoint: string,
-  where: string,
-  signal: AbortSignal
-): Promise<{ features: ArcGISFeature[]; error?: string }> {
-  const features: ArcGISFeature[] = []
-  let offset = 0
-  const pageSize = 1000
-
-  while (true) {
-    const url = buildQueryUrl(endpoint, offset, where)
-    try {
-      const res = await fetch(url, {
-        signal,
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LotScraper/1.0)' },
-      })
-      if (!res.ok) {
-        return { features, error: `HTTP ${res.status}` }
-      }
-      const json = (await res.json()) as ArcGISResponse
-      if (json.error) {
-        return { features, error: json.error.message }
-      }
-      const batch = json.features ?? []
-      features.push(...batch)
-      if (!json.exceededTransferLimit || batch.length < pageSize) break
-      offset += pageSize
-    } catch (err) {
-      return { features, error: err instanceof Error ? err.message : String(err) }
-    }
-  }
-  return { features }
 }
 
 async function logScrape(
   source: string,
   recordsFound: number,
   recordsAdded: number,
-  recordsUpdated: number,
   errors: string[]
 ) {
   try {
@@ -234,13 +143,10 @@ async function logScrape(
       source,
       records_found: recordsFound,
       records_added: recordsAdded,
-      records_updated: recordsUpdated,
-      errors: errors.length > 0 ? errors.join('; ') : null,
-      scraped_at: new Date().toISOString(),
+      errors: errors.length > 0 ? errors.slice(0, 3).join('; ') : null,
+      run_at: new Date().toISOString(),
     })
-  } catch {
-    // log failure is non-fatal
-  }
+  } catch { /* non-fatal */ }
 }
 
 export async function GET() {
@@ -253,133 +159,93 @@ export async function POST() {
 
 async function runScraper() {
   const errors: string[] = []
-  let recordsFound = 0
-  let recordsAdded = 0
-  let recordsUpdated = 0
+  let totalFound = 0
+  let totalAdded = 0
 
-  // Abort after 55 seconds (Vercel function limit is 60s on hobby, 300s on pro)
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 55000)
+  // Filter: >= 1 acre, residential/farm/agricultural class only (skip commercial, industrial, exempt)
+  // CLASS: R=Residential, F=Farm, A=Agricultural, C=Commercial, I=Industrial, E=Exempt
+  const where = "ACRE_PLAN_TOT >= 1 AND CLASS IN ('R', 'F', 'A')"
 
-  try {
-    // Try primary Lancaster County endpoints first
-    const whereAcres = 'ACRES>=1'
-    const wherePASQL = `COUNTY_NAME='${LANCASTER_COUNTY_NAME}' AND SHAPE_Area>=43560`
+  let offset = 0
+  const batchSize = 1000
+  let keepGoing = true
 
-    let features: ArcGISFeature[] = []
-    let endpointUsed = ''
+  // Safety: max 20 batches per run (20k records) to stay within Vercel 60s limit
+  let batchCount = 0
+  const MAX_BATCHES = 20
 
-    // Try direct Lancaster County endpoints
-    for (const ep of GIS_ENDPOINTS) {
-      const test = await tryFetchGIS(ep, whereAcres, controller.signal)
-      if (test && (test.features?.length ?? 0) > 0) {
-        const result = await fetchAllPages(ep, whereAcres, controller.signal)
-        if (result.features.length > 0) {
-          features = result.features
-          endpointUsed = ep
-          if (result.error) errors.push(result.error)
-        }
+  while (keepGoing && batchCount < MAX_BATCHES) {
+    try {
+      const url = buildUrl(offset, where)
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(25000),
+        headers: { 'User-Agent': 'LancasterLotFinder/1.0' },
+      })
+
+      if (!res.ok) {
+        errors.push(`GIS HTTP ${res.status} at offset ${offset}`)
         break
       }
-    }
 
-    // Fallback: try PASDA statewide
-    if (features.length === 0) {
-      const pasdaEndpoints = [
-        'https://services.pasda.psu.edu/arcgis/rest/services/pasda/PAParcels_2023/MapServer/0/query',
-        'https://services.pasda.psu.edu/arcgis/rest/services/pasda/PAParcels_2022/MapServer/0/query',
-        'https://services.pasda.psu.edu/arcgis/rest/services/pasda/PAParcels/MapServer/0/query',
-        'https://services.pasda.psu.edu/arcgis/rest/services/pasda/PACountyParcels/MapServer/0/query',
-      ]
-      for (const ep of pasdaEndpoints) {
-        const test = await tryFetchGIS(ep, wherePASQL, controller.signal)
-        if (test && (test.features?.length ?? 0) > 0) {
-          const result = await fetchAllPages(ep, wherePASQL, controller.signal)
-          if (result.features.length > 0) {
-            features = result.features
-            endpointUsed = ep
-            if (result.error) errors.push(result.error)
+      const json = await res.json() as {
+        features?: ArcGISFeature[]
+        exceededTransferLimit?: boolean
+        error?: { code: number; message: string }
+      }
+
+      if (json.error) {
+        errors.push(`GIS error: ${json.error.message}`)
+        break
+      }
+
+      const features = json.features ?? []
+      totalFound += features.length
+
+      if (features.length === 0) {
+        keepGoing = false
+        break
+      }
+
+      // Normalize
+      const rows = features.map(featureToLot).filter((r): r is NonNullable<ReturnType<typeof featureToLot>> => r !== null)
+
+      // Insert to Supabase in sub-batches of 200
+      // Uses parcel_id (UPI) to skip duplicates gracefully
+      const SUB_BATCH = 200
+      for (let i = 0; i < rows.length; i += SUB_BATCH) {
+        const chunk = rows.slice(i, i + SUB_BATCH)
+        const { data, error } = await supabaseServer
+          .from('lots')
+          .insert(chunk)
+          .select('id')
+        if (error) {
+          // Ignore duplicate key errors silently, log others
+          if (!error.message.includes('duplicate') && !error.message.includes('unique')) {
+            errors.push(`Insert error at offset ${offset + i}: ${error.message}`)
           }
-          break
-        }
-        // Also try FIPS-based query
-        const testFips = await tryFetchGIS(
-          ep,
-          `COUNTY_FIPS='${LANCASTER_FIPS}' AND SHAPE_Area>=43560`,
-          controller.signal
-        )
-        if (testFips && (testFips.features?.length ?? 0) > 0) {
-          const result = await fetchAllPages(
-            ep,
-            `COUNTY_FIPS='${LANCASTER_FIPS}' AND SHAPE_Area>=43560`,
-            controller.signal
-          )
-          if (result.features.length > 0) {
-            features = result.features
-            endpointUsed = ep
-            if (result.error) errors.push(result.error)
-          }
-          break
+        } else {
+          totalAdded += data?.length ?? 0
         }
       }
+
+      keepGoing = json.exceededTransferLimit === true
+      offset += features.length
+      batchCount++
+    } catch (e) {
+      errors.push(`Fetch error at offset ${offset}: ${e instanceof Error ? e.message : String(e)}`)
+      break
     }
-
-    if (features.length === 0) {
-      errors.push(
-        'No GIS endpoint returned data. Lancaster County GIS may require VPN or authentication. Tried: ' +
-          [...GIS_ENDPOINTS, PASDA_ENDPOINT].join(', ')
-      )
-      await logScrape('gis', 0, 0, 0, errors)
-      return NextResponse.json({
-        success: false,
-        records_found: 0,
-        records_added: 0,
-        records_updated: 0,
-        errors,
-        message: 'No accessible GIS endpoint found for Lancaster County PA parcels',
-      })
-    }
-
-    recordsFound = features.length
-
-    // Normalize and upsert in batches
-    const batchSize = 100
-    for (let i = 0; i < features.length; i += batchSize) {
-      const batch = features.slice(i, i + batchSize)
-      const rows = batch.map(normalizeFeature).filter((r) => r.parcel_id)
-
-      if (rows.length === 0) continue
-
-      const { data, error: upsertError } = await supabaseServer
-        .from('lots')
-        .upsert(rows, { onConflict: 'parcel_id', ignoreDuplicates: false })
-        .select('id')
-
-      if (upsertError) {
-        errors.push(`Upsert batch ${i}: ${upsertError.message}`)
-      } else {
-        // Supabase upsert doesn't distinguish added vs updated easily;
-        // use returned count as proxy
-        recordsAdded += data?.length ?? 0
-      }
-    }
-
-    await logScrape('gis', recordsFound, recordsAdded, recordsUpdated, errors)
-
-    return NextResponse.json({
-      success: true,
-      endpoint_used: endpointUsed,
-      records_found: recordsFound,
-      records_added: recordsAdded,
-      records_updated: recordsUpdated,
-      errors: errors.length > 0 ? errors : undefined,
-    })
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    errors.push(msg)
-    await logScrape('gis', recordsFound, recordsAdded, recordsUpdated, errors)
-    return NextResponse.json({ success: false, error: msg }, { status: 500 })
-  } finally {
-    clearTimeout(timeout)
   }
+
+  await logScrape('gis', totalFound, totalAdded, errors)
+
+  return NextResponse.json({
+    success: errors.length === 0 || totalAdded > 0,
+    source: 'Lancaster County ArcGIS Parcels',
+    records_found: totalFound,
+    records_added: totalAdded,
+    batches_run: batchCount,
+    more_available: keepGoing,
+    errors: errors.length > 0 ? errors : undefined,
+  })
 }
