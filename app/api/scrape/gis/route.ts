@@ -106,13 +106,27 @@ function featureToLot(f: ArcGISFeature) {
   const ownerParts = [a.ADDR1, a.ADDR2, a.ADDR3].filter(Boolean)
   const ownerContact = ownerParts.join(', ') || null
 
+  // Detect if has_building from assessment data
+  const has_building = (a.LOT_ASSESS ?? 0) > 0 && (a.TOT_ASSESS ?? 0) > (a.LOT_ASSESS ?? 0)
+
+  // Build enriched_data with GIS-specific fields
+  const enriched_data = {
+    zoning: a.LUC ?? null,
+    tax_parcel: upi ?? null,
+    owner_name: [a.OWN1, a.OWN2].filter(Boolean).join(' / ') || null,
+    year_built: null, // GIS doesn't provide this
+    structure_count: has_building ? 1 : 0,
+    lot_assessment: a.LOT_ASSESS ?? null,
+    total_assessment: a.TOT_ASSESS ?? null,
+    source_url: upi ? `https://lancastercountyassessment.org/AssessmentSearch/PropertyDetail/${encodeURIComponent(upi)}` : null,
+  }
+
   return {
     address,
     city: township,
     township,
     zip: null,
     lot_size_acres: a.ACRE_PLAN_TOT,
-    zoning: a.LUC ?? null,
     status,
     list_price: null,
     sold_price: status === 'sold' ? (a.LAST_SALE_PRICE ?? null) : null,
@@ -127,6 +141,11 @@ function featureToLot(f: ArcGISFeature) {
     agent_name: null,
     agent_contact: null,
     source: 'gis' as const,
+    has_building,
+    enriched_data,
+    gis_latitude: lat,
+    gis_longitude: lng,
+    images: [],
     raw_data: a,
     last_scraped_at: new Date().toISOString(),
   }
