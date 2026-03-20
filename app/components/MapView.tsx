@@ -67,12 +67,15 @@ export default function MapView({ lots, selectedLotId, onLotClick }: MapViewProp
       const map = new mapboxgl.Map({
         container: mapContainer.current!,
         style: 'mapbox://styles/mapbox/light-v11',
-        bounds: [
+      })
+
+      map.fitBounds(
+        [
           [bounds.minLng, bounds.minLat],
           [bounds.maxLng, bounds.maxLat],
         ],
-        padding: 50,
-      })
+        { padding: 50 }
+      )
 
       validLots.forEach((lot) => {
         if (lot.gis_latitude && lot.gis_longitude) {

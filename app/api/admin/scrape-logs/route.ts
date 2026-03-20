@@ -25,8 +25,8 @@ export async function GET() {
 
     // Count by source
     const countBySource: Record<string, number> = {}
-    for (const lot of lotCounts ?? []) {
-      const s = lot.source ?? 'unknown'
+    for (const lot of lotCounts as any[] ?? []) {
+      const s = (lot as any)?.source ?? 'unknown'
       countBySource[s] = (countBySource[s] ?? 0) + 1
     }
 
@@ -34,10 +34,10 @@ export async function GET() {
 
     // Get unique sources from logs
     const sourcesSeen = new Set<string>()
-    const latestBySource: Record<string, typeof logs[0]> = {}
+    const latestBySource: Record<string, any> = {}
 
-    for (const log of logs ?? []) {
-      const s = log.source
+    for (const log of logs as any[] ?? []) {
+      const s = (log as any)?.source
       if (!sourcesSeen.has(s)) {
         sourcesSeen.add(s)
         latestBySource[s] = log

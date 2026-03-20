@@ -105,8 +105,8 @@ export async function GET(req: NextRequest) {
       lots: Lot[]
     }> = []
 
-    for (const alert of alerts) {
-      const matchedLots = recentLots.filter(lot => lotMatchesAlert(lot, alert))
+    for (const alert of alerts as any[]) {
+      const matchedLots = (recentLots as any[]).filter(lot => lotMatchesAlert(lot, alert))
 
       if (matchedLots.length > 0) {
         matches.push({
