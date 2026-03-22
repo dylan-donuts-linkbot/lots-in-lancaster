@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
+import { logScrape, buildGoogleMapsUrl, validateCronSecret } from '@/lib/scrape-utils'
 
 // Lancaster County PA GIS Parcel Scraper
 // Source: Lancaster County ArcGIS Online - Parcels with Owner Data
@@ -151,28 +152,17 @@ function featureToLot(f: ArcGISFeature) {
   }
 }
 
-async function logScrape(
-  source: string,
-  recordsFound: number,
-  recordsAdded: number,
-  errors: string[]
-) {
-  try {
-    await supabaseServer.from('scrape_log').insert({
-      source,
-      records_found: recordsFound,
-      records_added: recordsAdded,
-      errors: errors.length > 0 ? errors.slice(0, 3).join('; ') : null,
-      run_at: new Date().toISOString(),
-    })
-  } catch { /* non-fatal */ }
-}
-
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!validateCronSecret(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   return runScraper()
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (!validateCronSecret(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   return runScraper()
 }
 

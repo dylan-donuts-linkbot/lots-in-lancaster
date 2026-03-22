@@ -3,6 +3,7 @@
 import { Card, CardContent, CardMedia, Box, Typography, Chip, Stack } from '@mui/material'
 import Link from 'next/link'
 import { BuildCircle } from '@mui/icons-material'
+import { SaveButton } from '@/components/SaveButton'
 
 interface Lot {
   id: string
@@ -24,28 +25,35 @@ export default function PropertyCard({ lot }: { lot: Lot }) {
   const imageUrl = lot.images?.[0]?.url || '/placeholder-lot.svg'
 
   return (
-    <Link href={`/lots/${lot.id}`} style={{ textDecoration: 'none' }}>
-      <Card
-        sx={{
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          transition: 'all 0.3s ease',
-          '&:hover': {
-            boxShadow: 6,
-            transform: 'translateY(-4px)',
-          },
-        }}
-      >
-        <CardMedia
-          component="img"
-          height="200"
-          image={imageUrl}
-          alt={lot.address || 'Property image'}
-          sx={{ objectFit: 'cover', backgroundColor: '#f0f0f0' }}
-        />
+    <Card
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        transition: 'all 0.3s ease',
+        '&:hover': {
+          boxShadow: 6,
+          transform: 'translateY(-4px)',
+        },
+      }}
+    >
+      <Box sx={{ position: 'relative' }}>
+        <Link href={`/lots/${lot.id}`} style={{ textDecoration: 'none' }}>
+          <CardMedia
+            component="img"
+            height="200"
+            image={imageUrl}
+            alt={lot.address || 'Property image'}
+            sx={{ objectFit: 'cover', backgroundColor: '#f0f0f0' }}
+          />
+        </Link>
+        <Box sx={{ position: 'absolute', top: 8, right: 8 }}>
+          <SaveButton lotId={lot.id} className="bg-white shadow-md" />
+        </Box>
+      </Box>
+      <Link href={`/lots/${lot.id}`} style={{ textDecoration: 'none', flexGrow: 1, display: 'flex' }}>
         <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#1976d2' }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#1976d2', fontSize: '1.1rem' }}>
             {lot.address || 'Address TBA'}
           </Typography>
 
@@ -53,12 +61,12 @@ export default function PropertyCard({ lot }: { lot: Lot }) {
             <Chip
               label={`$${lot.list_price?.toLocaleString() || 'N/A'}`}
               size="small"
-              sx={{ backgroundColor: '#e8f5e9', color: '#2e7d32' }}
+              sx={{ backgroundColor: '#e8f5e9', color: '#2e7d32', fontSize: '0.9rem' }}
             />
             <Chip
               label={`${lot.lot_size_acres?.toFixed(2) || 'N/A'} acres`}
               size="small"
-              sx={{ backgroundColor: '#e3f2fd', color: '#1565c0' }}
+              sx={{ backgroundColor: '#e3f2fd', color: '#1565c0', fontSize: '0.9rem' }}
             />
           </Stack>
 
@@ -82,7 +90,7 @@ export default function PropertyCard({ lot }: { lot: Lot }) {
             />
           </Box>
         </CardContent>
-      </Card>
-    </Link>
+      </Link>
+    </Card>
   )
 }

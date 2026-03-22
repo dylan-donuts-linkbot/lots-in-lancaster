@@ -1,31 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase-server'
+import { buildLotQuery, filtersFromSearchParams } from '@/lib/lot-query'
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
+  const filters = filtersFromSearchParams(searchParams)
 
-  const status = searchParams.get('status')
-  const minAcres = searchParams.get('minAcres')
-  const maxAcres = searchParams.get('maxAcres')
-  const township = searchParams.get('township')
-  const minPrice = searchParams.get('minPrice')
-  const maxPrice = searchParams.get('maxPrice')
-  const source = searchParams.get('source')
-  const hasBuilding = searchParams.get('hasBuilding') === 'true'
   const orderBy = searchParams.get('orderBy') || 'price'
   const limit = Math.min(parseInt(searchParams.get('limit') || '500'), 1000)
   const offset = parseInt(searchParams.get('offset') || '0')
 
-  let query = supabaseServer.from('lots').select('*')
-
-  if (status) query = query.eq('status', status)
-  if (minAcres) query = query.gte('lot_size_acres', parseFloat(minAcres))
-  if (maxAcres) query = query.lte('lot_size_acres', parseFloat(maxAcres))
-  if (township) query = query.ilike('township', `%${township}%`)
-  if (minPrice) query = query.gte('list_price', parseFloat(minPrice))
-  if (maxPrice) query = query.lte('list_price', parseFloat(maxPrice))
-  if (source) query = query.eq('source', source)
-  if (hasBuilding) query = query.eq('has_building', true)
+  let query = buildLotQuery(filters)
 
   const orderColumn: Record<string, string> = {
     price: 'list_price',

@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
+import { logScrape, buildGoogleMapsUrl, validateCronSecret } from '@/lib/scrape-utils'
 
 // Lancaster County Recorder of Deeds scraper
 // Primary: https://landrecords.lancastercountypa.gov
@@ -53,17 +54,6 @@ function parseConsideration(val: unknown): number | null {
   const s = String(val).replace(/[$,\s]/g, '')
   const n = parseFloat(s)
   return isNaN(n) ? null : n
-}
-
-function buildGoogleMapsUrl(
-  lat: number | null,
-  lng: number | null,
-  address: string | null
-): string | null {
-  if (lat && lng) return `https://maps.google.com/?q=${lat},${lng}`
-  if (address)
-    return `https://maps.google.com/?q=${encodeURIComponent(address + ' Lancaster County PA')}`
-  return null
 }
 
 function normalizeDeed(d: DeedRecord) {
@@ -287,32 +277,17 @@ async function getRecentGISOwnershipChanges(): Promise<{
   return { records, errors }
 }
 
-async function logScrape(
-  source: string,
-  recordsFound: number,
-  recordsAdded: number,
-  recordsUpdated: number,
-  errors: string[]
-) {
-  try {
-    await supabaseServer.from('scrape_log').insert({
-      source,
-      records_found: recordsFound,
-      records_added: recordsAdded,
-      records_updated: recordsUpdated,
-      errors: errors.length > 0 ? errors.join('; ') : null,
-      run_at: new Date().toISOString(),
-    })
-  } catch {
-    // non-fatal
+export async function GET(request: NextRequest) {
+  if (!validateCronSecret(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-}
-
-export async function GET() {
   return runScraper()
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (!validateCronSecret(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   return runScraper()
 }
 

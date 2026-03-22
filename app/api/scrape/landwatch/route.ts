@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
+import { logScrape, buildGoogleMapsUrl, validateCronSecret } from '@/lib/scrape-utils'
 
 // LandWatch + Land.com scraper for Lancaster County PA land listings
 
@@ -71,17 +72,6 @@ interface LandComListing {
   agentName?: string
   agentPhone?: string
   mlsId?: string
-}
-
-function buildGoogleMapsUrl(
-  lat: number | null,
-  lng: number | null,
-  address: string | null
-): string | null {
-  if (lat && lng) return `https://maps.google.com/?q=${lat},${lng}`
-  if (address)
-    return `https://maps.google.com/?q=${encodeURIComponent(address + ' Lancaster County PA')}`
-  return null
 }
 
 function normalizeLandWatch(l: LandWatchListing) {
@@ -353,27 +343,6 @@ async function scrapeLandCom(): Promise<{
   return { listings, errors }
 }
 
-async function logScrape(
-  source: string,
-  recordsFound: number,
-  recordsAdded: number,
-  recordsUpdated: number,
-  errors: string[]
-) {
-  try {
-    await supabaseServer.from('scrape_log').insert({
-      source,
-      records_found: recordsFound,
-      records_added: recordsAdded,
-      records_updated: recordsUpdated,
-      errors: errors.length > 0 ? errors.join('; ') : null,
-      run_at: new Date().toISOString(),
-    })
-  } catch {
-    // non-fatal
-  }
-}
-
 async function upsertRows(
   rows: Array<ReturnType<typeof normalizeLandWatch> | ReturnType<typeof normalizeLandCom>>,
   source: string
@@ -405,11 +374,17 @@ async function upsertRows(
   return { added, errors }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!validateCronSecret(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   return runScraper()
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (!validateCronSecret(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   return runScraper()
 }
 

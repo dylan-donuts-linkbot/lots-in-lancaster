@@ -1,44 +1,8 @@
 import { supabaseServer } from '@/lib/supabase-server'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-
-interface Lot {
-  id: string
-  address: string | null
-  township: string | null
-  city: string | null
-  zip: string | null
-  utilities: string | null
-  lot_size_acres: number | null
-  zoning: string | null
-  status: string | null
-  parcel_id: string | null
-  list_price: number | null
-  sold_price: number | null
-  sold_date: string | null
-  listed_date: string | null
-  owner_name: string | null
-  owner_contact: string | null
-  agent_name: string | null
-  agent_contact: string | null
-  zillow_link: string | null
-  realtor_link: string | null
-  lat: number | null
-  lng: number | null
-  source: string | null
-  last_scraped_at: string | null
-  raw_data: unknown | null
-}
-
-function fmt(n: number | null, prefix = '') {
-  if (n == null) return '—'
-  return prefix + n.toLocaleString()
-}
-
-function fmtDate(s: string | null) {
-  if (!s) return '—'
-  return new Date(s).toLocaleDateString()
-}
+import type { Lot } from '@/lib/types'
+import { fmt, fmtDate } from '@/lib/format'
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -220,7 +184,7 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
             <Field label="Source" value={l.source} />
             <Field label="Last Scraped" value={fmtDate(l.last_scraped_at)} />
           </dl>
-          {!!l.raw_data && (
+          {l.raw_data != null && (
             <details className="group">
               <summary className="cursor-pointer text-xs font-medium text-blue-600 hover:text-blue-800 select-none">
                 View raw data

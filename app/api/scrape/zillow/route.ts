@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
+import { logScrape, buildGoogleMapsUrl, validateCronSecret } from '@/lib/scrape-utils'
 
 // Zillow land scraper for Lancaster County PA
 // Zillow heavily blocks scrapers; this route handles failures gracefully.
@@ -76,16 +77,6 @@ function acresFromListing(listing: ZillowListing): number | null {
   if (unit === 'acres' || unit === 'acre') return Math.round(val * 1000) / 1000
   if (unit === 'sqft' || unit === 'squarefeet' || unit === '')
     return Math.round((val / 43560) * 1000) / 1000
-  return null
-}
-
-function buildGoogleMapsUrl(
-  lat: number | null,
-  lng: number | null,
-  address: string | null
-): string | null {
-  if (lat && lng) return `https://maps.google.com/?q=${lat},${lng}`
-  if (address) return `https://maps.google.com/?q=${encodeURIComponent(address + ' Lancaster County PA')}`
   return null
 }
 
@@ -213,32 +204,17 @@ async function tryZillowBrowse(): Promise<ZillowListing[] | null> {
   }
 }
 
-async function logScrape(
-  source: string,
-  recordsFound: number,
-  recordsAdded: number,
-  recordsUpdated: number,
-  errors: string[]
-) {
-  try {
-    await supabaseServer.from('scrape_log').insert({
-      source,
-      records_found: recordsFound,
-      records_added: recordsAdded,
-      records_updated: recordsUpdated,
-      errors: errors.length > 0 ? errors.join('; ') : null,
-      run_at: new Date().toISOString(),
-    })
-  } catch {
-    // non-fatal
+export async function GET(request: NextRequest) {
+  if (!validateCronSecret(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-}
-
-export async function GET() {
   return runScraper()
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (!validateCronSecret(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   return runScraper()
 }
 

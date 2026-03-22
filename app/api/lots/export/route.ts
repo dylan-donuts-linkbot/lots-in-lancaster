@@ -1,32 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase-server'
-
-interface Lot {
-  id: string
-  address: string | null
-  township: string | null
-  city: string | null
-  zip: string | null
-  lot_size_acres: number | null
-  zoning: string | null
-  utilities: string | null
-  status: string | null
-  list_price: number | null
-  sold_price: number | null
-  sold_date: string | null
-  listed_date: string | null
-  mls_id: string | null
-  zillow_link: string | null
-  zillow_url: string | null
-  google_maps_url: string | null
-  owner_name: string | null
-  agent_name: string | null
-  agent_contact: string | null
-  source: string | null
-  lat: number | null
-  lng: number | null
-  last_scraped_at: string | null
-}
+import { buildLotQuery, filtersFromSearchParams } from '@/lib/lot-query'
+import type { Lot } from '@/lib/types'
 
 function escapeCSV(val: string | number | null | undefined): string {
   if (val == null) return ''
@@ -131,26 +105,11 @@ function lotToKMLPlacemark(lot: Lot): string {
 
 async function fetchLots(request: NextRequest): Promise<Lot[]> {
   const { searchParams } = new URL(request.url)
-  const status = searchParams.get('status')
-  const minAcres = searchParams.get('minAcres')
-  const maxAcres = searchParams.get('maxAcres')
-  const township = searchParams.get('township')
-  const minPrice = searchParams.get('minPrice')
-  const maxPrice = searchParams.get('maxPrice')
-  const source = searchParams.get('source')
+  const filters = filtersFromSearchParams(searchParams)
 
-  let query = supabaseServer.from('lots').select('*')
-
-  if (status) query = query.eq('status', status)
-  if (minAcres) query = query.gte('lot_size_acres', parseFloat(minAcres))
-  if (maxAcres) query = query.lte('lot_size_acres', parseFloat(maxAcres))
-  if (township) query = query.ilike('township', `%${township}%`)
-  if (minPrice) query = query.gte('list_price', parseFloat(minPrice))
-  if (maxPrice) query = query.lte('list_price', parseFloat(maxPrice))
-  if (source) query = query.eq('source', source)
-
-  // Export up to 10,000 records
-  query = query.order('last_scraped_at', { ascending: false }).limit(10000)
+  const query = buildLotQuery(filters)
+    .order('last_scraped_at', { ascending: false })
+    .limit(10000)
 
   const { data, error } = await query
   if (error) throw new Error(error.message)
