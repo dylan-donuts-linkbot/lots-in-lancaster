@@ -39,6 +39,16 @@ export interface Lot extends LotSummary {
   lat: number | null
   lng: number | null
   raw_data: unknown | null
+
+  // Phase 3: Data Enrichment
+  satellite_image_url: string | null
+  satellite_cached_at: string | null
+  zoning_description: string | null
+  assessed_value: number | null
+  annual_tax: number | null
+  last_assessment_year: number | null
+  distance_to_lancaster_city: number | null
+  distance_to_nearest_town: number | null
 }
 
 /** Filter params used across listing & export routes */

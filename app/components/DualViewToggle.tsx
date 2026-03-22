@@ -1,6 +1,6 @@
 'use client'
 
-import { Box, ToggleButton, ToggleButtonGroup, Paper } from '@mui/material'
+import { ToggleButton, ToggleButtonGroup, Paper } from '@mui/material'
 import { List as ListIcon, Map as MapIcon } from '@mui/icons-material'
 
 interface DualViewToggleProps {
@@ -20,12 +20,31 @@ export default function DualViewToggle({ view, onChange }: DualViewToggleProps) 
           }
         }}
         aria-label="view mode"
+        sx={{ width: { xs: '100%', sm: 'auto' } }}
       >
-        <ToggleButton value="list" aria-label="list view">
+        <ToggleButton
+          value="list"
+          aria-label="list view"
+          sx={{
+            flex: { xs: 1, sm: 'initial' },
+            minHeight: 48,
+            fontSize: '1rem',
+            fontWeight: 600,
+          }}
+        >
           <ListIcon sx={{ mr: 1 }} />
           List
         </ToggleButton>
-        <ToggleButton value="map" aria-label="map view">
+        <ToggleButton
+          value="map"
+          aria-label="map view"
+          sx={{
+            flex: { xs: 1, sm: 'initial' },
+            minHeight: 48,
+            fontSize: '1rem',
+            fontWeight: 600,
+          }}
+        >
           <MapIcon sx={{ mr: 1 }} />
           Map
         </ToggleButton>

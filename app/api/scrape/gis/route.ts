@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
 import { logScrape, buildGoogleMapsUrl, validateCronSecret } from '@/lib/scrape-utils'
+import { getSatelliteImageUrl } from '@/lib/satellite'
+import { estimateTaxFromGIS } from '@/lib/tax-scraper'
+import { getDistanceToLancasterCityApprox } from '@/lib/distance'
 
 // Lancaster County PA GIS Parcel Scraper
 // Source: Lancaster County ArcGIS Online - Parcels with Owner Data
@@ -32,6 +35,16 @@ const MUNI_NAMES: Record<number, string> = {
   52: 'Upper Leacock Twp', 53: 'Warwick Twp', 54: 'West Cocalico Twp',
   55: 'West Donegal Twp', 56: 'West Earl Twp', 57: 'West Hempfield Twp',
   58: 'West Lampeter Twp',
+}
+
+// Map parcel class codes to human-readable zoning descriptions
+const ZONING_DESCRIPTIONS: Record<string, string> = {
+  R: 'Residential (single-family homes allowed)',
+  F: 'Farm/Agricultural land',
+  A: 'Agricultural use',
+  C: 'Commercial',
+  I: 'Industrial',
+  E: 'Exempt (government/nonprofit)',
 }
 
 interface ArcGISFeature {
@@ -122,6 +135,19 @@ function featureToLot(f: ArcGISFeature) {
     source_url: upi ? `https://lancastercountyassessment.org/AssessmentSearch/PropertyDetail/${encodeURIComponent(upi)}` : null,
   }
 
+  // Phase 3: Satellite image URL
+  const satelliteImageUrl = lat && lng ? getSatelliteImageUrl(lat, lng) : null
+
+  // Phase 3: Zoning description from class code
+  const classCode = a.CLASS ?? null
+  const zoningDescription = classCode ? (ZONING_DESCRIPTIONS[classCode] ?? `Class: ${classCode}`) : null
+
+  // Phase 3: Tax estimates from GIS assessment data
+  const taxData = estimateTaxFromGIS(a.TOT_ASSESS ?? null, a.LOT_ASSESS ?? null)
+
+  // Phase 3: Approximate distance to Lancaster City (haversine, no API key needed)
+  const distToLancaster = lat && lng ? getDistanceToLancasterCityApprox(lat, lng) : null
+
   return {
     address,
     city: township,
@@ -149,6 +175,15 @@ function featureToLot(f: ArcGISFeature) {
     images: [],
     raw_data: a,
     last_scraped_at: new Date().toISOString(),
+    // Phase 3: Data enrichment fields
+    satellite_image_url: satelliteImageUrl,
+    satellite_cached_at: satelliteImageUrl ? new Date().toISOString() : null,
+    zoning_description: zoningDescription,
+    assessed_value: taxData.assessedValue,
+    annual_tax: taxData.annualTax,
+    last_assessment_year: taxData.lastAssessmentYear,
+    distance_to_lancaster_city: distToLancaster,
+    distance_to_nearest_town: null, // TODO: requires town location database
   }
 }
 
