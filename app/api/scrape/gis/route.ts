@@ -246,7 +246,7 @@ async function runScraper() {
     }
   }
 
-  await logScrape('gis', totalFound, totalAdded, errors)
+  await logScrape('gis', totalFound, totalAdded, 0, errors)
 
   return NextResponse.json({
     success: errors.length === 0 || totalAdded > 0,
