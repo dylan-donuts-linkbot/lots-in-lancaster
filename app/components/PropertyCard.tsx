@@ -13,6 +13,7 @@ interface Lot {
   has_building: boolean | null
   status: string | null
   images: Array<{ url: string; source: string }> | null
+  satellite_image_url?: string | null
 }
 
 export default function PropertyCard({ lot }: { lot: Lot }) {
@@ -22,7 +23,7 @@ export default function PropertyCard({ lot }: { lot: Lot }) {
     unknown: 'warning',
   }
 
-  const imageUrl = lot.images?.[0]?.url || '/placeholder-lot.svg'
+  const imageUrl = lot.images?.[0]?.url || lot.satellite_image_url || '/placeholder-lot.svg'
 
   return (
     <Card

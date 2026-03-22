@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { Lot } from '@/lib/types'
 import { fmt, fmtDate } from '@/lib/format'
+import { getStreetViewUrl } from '@/lib/street-view'
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -65,6 +66,9 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
       ? `https://maps.google.com/maps?q=${encodeURIComponent([l.address, l.city, 'PA', l.zip].filter(Boolean).join(', '))}`
       : null
 
+  // Phase 3: Computed street view URL (not stored in DB)
+  const streetViewUrl = l.lat && l.lng ? getStreetViewUrl(l.lat, l.lng) : null
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-6 py-4">
@@ -116,13 +120,37 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
           )}
         </Section>
 
+        {/* Zoning Info (prominent) */}
+        {l.zoning_description && (
+          <div className="bg-amber-50 rounded-lg border border-amber-200 p-5">
+            <h2 className="text-sm font-semibold text-amber-800 mb-2">Zoning</h2>
+            <p className="text-lg font-medium text-amber-900">{l.zoning_description}</p>
+            {l.zoning && <p className="text-xs text-amber-600 mt-1">Code: {l.zoning}</p>}
+          </div>
+        )}
+
         {/* Property Details */}
         <Section title="Property Details">
           <Field label="Lot Size" value={l.lot_size_acres != null ? `${l.lot_size_acres} acres` : null} />
-          <Field label="Zoning" value={l.zoning} />
+          <Field label="Zoning" value={l.zoning_description || l.zoning} />
           <Field label="Status" value={<StatusBadge status={l.status} />} />
           <Field label="Parcel ID" value={l.parcel_id} />
+          {l.distance_to_lancaster_city != null && (
+            <Field label="Distance to Lancaster City" value={`~${l.distance_to_lancaster_city} miles`} />
+          )}
+          {l.distance_to_nearest_town != null && (
+            <Field label="Distance to Nearest Town" value={`~${l.distance_to_nearest_town} miles`} />
+          )}
         </Section>
+
+        {/* Tax & Assessment */}
+        {(l.assessed_value != null || l.annual_tax != null) && (
+          <Section title="Tax & Assessment">
+            <Field label="Assessed Value" value={fmt(l.assessed_value, '$')} />
+            <Field label="Est. Annual Tax" value={fmt(l.annual_tax, '$')} />
+            <Field label="Assessment Year" value={l.last_assessment_year?.toString() ?? '—'} />
+          </Section>
+        )}
 
         {/* Pricing */}
         <Section title="Pricing">
@@ -171,8 +199,17 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
                 </svg>
               </a>
             )}
+            {streetViewUrl && (
+              <a href={streetViewUrl} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded border border-purple-200 bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 hover:bg-purple-100">
+                🛣️ View Street Level
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </a>
+            )}
           </div>
-          {!l.zillow_link && !l.realtor_link && !googleMapsUrl && (
+          {!l.zillow_link && !l.realtor_link && !googleMapsUrl && !streetViewUrl && (
             <p className="text-sm text-gray-400">No links available</p>
           )}
         </div>
